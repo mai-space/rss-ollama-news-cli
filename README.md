@@ -28,6 +28,11 @@
 curl -fsSL https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/main/install.sh | bash
 ```
 
+> **Development branch:** until this is merged to `main`, use the full branch URL:
+> ```bash
+> curl -fsSL "https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/claude/cli-newsletter-rss-ai-heER5/install.sh" | bash
+> ```
+
 The script checks for Python 3.11+, warns if Ollama is missing, installs the package, and prints usage instructions.
 
 ### Prerequisites

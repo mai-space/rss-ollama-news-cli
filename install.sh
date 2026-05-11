@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Newsroom — one-line installer / updater
-# Usage: curl -fsSL https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/main/install.sh | bash
+# Stable:  curl -fsSL https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/main/install.sh | bash
+# Dev:     curl -fsSL "https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/claude/cli-newsletter-rss-ai-heER5/install.sh" | bash
 
 set -euo pipefail
 
@@ -66,14 +67,16 @@ echo ""
 echo -e "  ${BLUE}Installing Newsroom…${NC}"
 
 REPO="https://github.com/mai-space/rss-ollama-news-cli"
+# Pin to the branch this script ships on; update to @main after merge.
+BRANCH="claude/cli-newsletter-rss-ai-heER5"
 
-if python3 -m pip install --quiet --upgrade "rss-ollama-news-cli @ git+${REPO}.git" 2>&1; then
+if python3 -m pip install --quiet --upgrade "rss-ollama-news-cli @ git+${REPO}.git@${BRANCH}" 2>&1; then
   ok "Newsroom installed"
 else
   err "pip install failed — trying with --user flag…"
-  python3 -m pip install --quiet --user --upgrade "rss-ollama-news-cli @ git+${REPO}.git" || {
+  python3 -m pip install --quiet --user --upgrade "rss-ollama-news-cli @ git+${REPO}.git@${BRANCH}" || {
     err "Installation failed."
-    info "Try manually: pip install git+${REPO}.git"
+    info "Try manually: pip install git+${REPO}.git@${BRANCH}"
     exit 1
   }
   ok "Newsroom installed (user-local)"
