@@ -33,7 +33,13 @@ curl -fsSL https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/main/
 > curl -fsSL "https://raw.githubusercontent.com/mai-space/rss-ollama-news-cli/claude/cli-newsletter-rss-ai-heER5/install.sh" | bash
 > ```
 
-The script checks for Python 3.11+, warns if Ollama is missing, installs the package, and prints usage instructions.
+The script auto-selects the best installation method for your system:
+
+| Environment | Method used |
+|---|---|
+| `pipx` available | `pipx install` (isolated, recommended) |
+| macOS + Homebrew, no `pipx` | Offers to `brew install pipx` first |
+| Linux / no Homebrew | Dedicated venv at `~/.local/share/newsroom/venv` |
 
 ### Prerequisites
 
@@ -49,6 +55,18 @@ curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull a model (one-time)
 ollama pull llama3.2
+```
+
+### Manual install with pipx
+
+If you prefer to install manually (recommended on macOS):
+
+```bash
+# Install pipx if needed
+brew install pipx   # macOS
+# or: pip install --user pipx
+
+pipx install "git+https://github.com/mai-space/rss-ollama-news-cli.git"
 ```
 
 ---

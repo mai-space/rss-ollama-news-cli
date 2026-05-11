@@ -20,7 +20,7 @@ echo -e "${DIM}  RSS feeds + AI summaries in your terminal${NC}"
 echo -e "  ${DIM}──────────────────────────────────────────${NC}"
 echo ""
 
-# ── Check Python ─────────────────────────────────────────────────────────────
+# ── Check Python ──────────────────────────────────────────────────────────────
 if ! command -v python3 &>/dev/null; then
   err "Python 3 not found."
   info "Install Python 3.11+ from https://python.org"
@@ -38,15 +38,7 @@ if [[ "$PY_MAJOR" -lt 3 ]] || [[ "$PY_MAJOR" -eq 3 && "$PY_MINOR" -lt 11 ]]; the
 fi
 ok "Python ${PY_VER}"
 
-# ── Check pip ─────────────────────────────────────────────────────────────────
-if ! python3 -m pip --version &>/dev/null; then
-  err "pip not found."
-  info "Fix with: python3 -m ensurepip --upgrade"
-  exit 1
-fi
-ok "pip available"
-
-# ── Check Ollama ─────────────────────────────────────────────────────────────
+# ── Check Ollama ──────────────────────────────────────────────────────────────
 if command -v ollama &>/dev/null; then
   OLLAMA_VER=$(ollama --version 2>/dev/null | head -1 || echo "unknown version")
   ok "Ollama — ${OLLAMA_VER}"
@@ -62,40 +54,88 @@ else
   [[ "$REPLY" =~ ^[Yy]$ ]] || exit 1
 fi
 
-# ── Install / upgrade Newsroom ────────────────────────────────────────────────
-echo ""
-echo -e "  ${BLUE}Installing Newsroom…${NC}"
-
+# ── Package coordinates ───────────────────────────────────────────────────────
 REPO="https://github.com/mai-space/rss-ollama-news-cli"
 # Pin to the branch this script ships on; update to @main after merge.
 BRANCH="claude/cli-newsletter-rss-ai-heER5"
+GIT_URL="${REPO}.git@${BRANCH}"
 
-if python3 -m pip install --quiet --upgrade "rss-ollama-news-cli @ git+${REPO}.git@${BRANCH}" 2>&1; then
-  ok "Newsroom installed"
-else
-  err "pip install failed — trying with --user flag…"
-  python3 -m pip install --quiet --user --upgrade "rss-ollama-news-cli @ git+${REPO}.git@${BRANCH}" || {
-    err "Installation failed."
-    info "Try manually: pip install git+${REPO}.git@${BRANCH}"
+echo ""
+echo -e "  ${BLUE}Installing Newsroom…${NC}"
+
+# ── Strategy 1: pipx ─────────────────────────────────────────────────────────
+# pipx is the recommended way to install Python CLI tools — it creates an
+# isolated venv automatically and puts the binary on PATH. On macOS with
+# Homebrew Python (PEP 668) this is the only clean path.
+if command -v pipx &>/dev/null; then
+  if pipx install "git+${GIT_URL}" --force 2>&1; then
+    ok "Newsroom installed via pipx"
+    INSTALLED_VIA="pipx"
+  else
+    err "pipx install failed."
+    info "Try manually: pipx install git+${GIT_URL}"
     exit 1
-  }
-  ok "Newsroom installed (user-local)"
+  fi
+
+# ── Strategy 2: offer to install pipx, then retry ────────────────────────────
+elif command -v brew &>/dev/null; then
+  warn "pipx not found. It is the recommended installer for CLI tools on macOS."
+  echo ""
+  read -r -p "  Install pipx via Homebrew now? [Y/n] " REPLY
+  echo
+  if [[ ! "$REPLY" =~ ^[Nn]$ ]]; then
+    brew install pipx --quiet
+    pipx ensurepath --quiet
+    export PATH="${HOME}/.local/bin:${PATH}"
+    pipx install "git+${GIT_URL}" --force
+    ok "Newsroom installed via pipx"
+    INSTALLED_VIA="pipx"
+  else
+    # Fall through to venv strategy
+    INSTALLED_VIA="venv"
+  fi
+
+# ── Strategy 3: dedicated venv (Linux / no Homebrew) ─────────────────────────
+else
+  INSTALLED_VIA="venv"
 fi
 
-# ── Verify the command is on PATH ─────────────────────────────────────────────
+if [[ "${INSTALLED_VIA:-venv}" == "venv" ]]; then
+  VENV_DIR="${HOME}/.local/share/newsroom/venv"
+  BIN_DIR="${HOME}/.local/bin"
+
+  info "Creating isolated venv at ${VENV_DIR}"
+  mkdir -p "${BIN_DIR}"
+  python3 -m venv "${VENV_DIR}" --clear --upgrade-deps 2>&1 | grep -v "^$" || true
+  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
+  "${VENV_DIR}/bin/pip" install --quiet "rss-ollama-news-cli @ git+${GIT_URL}"
+
+  # Write a thin wrapper so 'news' works from any shell
+  cat > "${BIN_DIR}/news" <<WRAPPER
+#!/usr/bin/env bash
+exec "${VENV_DIR}/bin/news" "\$@"
+WRAPPER
+  chmod +x "${BIN_DIR}/news"
+  ok "Newsroom installed (${VENV_DIR})"
+fi
+
+# ── Verify 'news' is reachable ────────────────────────────────────────────────
+# Reload PATH in case pipx/pipx ensurepath just modified it
+export PATH="${HOME}/.local/bin:${PATH}"
+
 if ! command -v news &>/dev/null; then
-  LOCAL_BIN="$HOME/.local/bin"
-  warn "'news' not found in PATH."
+  warn "'news' not yet on PATH."
   echo ""
-  echo -e "  Add ${BOLD}~/.local/bin${NC} to your PATH:"
+  echo -e "  Add ${BOLD}~/.local/bin${NC} to your shell's PATH:"
   echo ""
-  echo -e "    ${DIM}echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc${NC}"
-  echo -e "    ${DIM}source ~/.bashrc${NC}"
+  echo -e "    ${DIM}# bash${NC}"
+  echo -e "    ${DIM}echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc && source ~/.bashrc${NC}"
   echo ""
-  echo -e "  ${DIM}(For zsh, replace .bashrc with .zshrc)${NC}"
+  echo -e "    ${DIM}# zsh${NC}"
+  echo -e "    ${DIM}echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zshrc && source ~/.zshrc${NC}"
+  echo ""
 else
-  NEWS_VER=$(news --version 2>/dev/null || echo "installed")
-  ok "'news' command ready — ${NEWS_VER}"
+  ok "'news' command is ready"
 fi
 
 # ── Usage summary ─────────────────────────────────────────────────────────────
