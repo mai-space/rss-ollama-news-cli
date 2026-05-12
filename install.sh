@@ -21,7 +21,7 @@ info() { echo -e "  ${BLUE}ℹ${NC}  $*"; }
 # answer when no controlling terminal is available (CI, Docker, etc.).
 ask() {
   local prompt="$1" default="$2"
-  if [ -e /dev/tty ]; then
+  if [ -c /dev/tty ] && [ -r /dev/tty ]; then
     read -r -p "  ${prompt} " REPLY </dev/tty
   else
     REPLY=""
