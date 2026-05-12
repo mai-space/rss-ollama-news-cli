@@ -131,13 +131,15 @@ if [[ "${INSTALLED_VIA}" == "uv" ]]; then
       if ! brew install uv --quiet; then
         warn "Homebrew failed to install uv."
       fi
-    else
+    elif command -v curl &>/dev/null; then
       # Official uv installer (no root required; works on macOS and Linux).
       # This follows the same curl-to-shell pattern as this installer itself.
       if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
         warn "uv installer failed."
       fi
       export PATH="${HOME}/.local/bin:${PATH}"
+    else
+      warn "curl not found — cannot install uv automatically."
     fi
   fi
 
@@ -167,7 +169,9 @@ if [[ "${INSTALLED_VIA}" == "venv" ]]; then
   mkdir -p "${BIN_DIR}"
 
   # Prefer uv venv when available — it does not require ensurepip.
+  # Remove any stale venv first so the install is idempotent (mirrors --clear).
   if command -v uv &>/dev/null; then
+    rm -rf "${VENV_DIR}"
     if ! uv venv "${VENV_DIR}" --seed; then
       err "uv venv creation failed — cannot complete installation."
       exit 1
