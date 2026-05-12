@@ -91,8 +91,8 @@ if command -v pipx &>/dev/null; then
     INSTALLED_VIA="pipx"
   else
     warn "pipx install failed (ensurepip unavailable? e.g. Homebrew Python 3.14+)."
-    info "Falling back to isolated venv install…"
-    INSTALLED_VIA="venv"
+    info "Falling back to uv install…"
+    INSTALLED_VIA="uv"
   fi
 
 # ── Strategy 2: offer to install pipx, then retry ────────────────────────────
@@ -109,48 +109,91 @@ elif command -v brew &>/dev/null; then
       ok "Newsroom installed via pipx"
       INSTALLED_VIA="pipx"
     else
-      warn "pipx install failed — falling back to isolated venv install…"
+      warn "pipx install failed — falling back to uv…"
+      INSTALLED_VIA="uv"
+    fi
+  else
+    # Fall through to uv strategy
+    INSTALLED_VIA="uv"
+  fi
+
+# ── Strategy 3: uv or dedicated venv (Linux / no Homebrew) ───────────────────
+else
+  INSTALLED_VIA="uv"
+fi
+
+# ── Strategy 2b/3b: uv tool install ──────────────────────────────────────────
+# uv does not depend on ensurepip and works with Homebrew Python 3.14+.
+if [[ "${INSTALLED_VIA}" == "uv" ]]; then
+  if ! command -v uv &>/dev/null; then
+    info "uv not found — installing…"
+    if command -v brew &>/dev/null; then
+      brew install uv --quiet
+    else
+      # Official uv installer (no root required; works on macOS and Linux).
+      # This follows the same curl-to-shell pattern as this installer itself.
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      export PATH="${HOME}/.local/bin:${PATH}"
+    fi
+  fi
+
+  if command -v uv &>/dev/null; then
+    if uv tool install "git+${GIT_URL}" --force 2>&1; then
+      ok "Newsroom installed via uv"
+      INSTALLED_VIA="uv_tool"
+      # uv places tool binaries in UV_TOOL_BIN_DIR (default: ~/.local/bin).
+      # Export it now so the PATH check below can find 'news' immediately.
+      UV_TOOL_BIN="$(uv tool bin 2>/dev/null || echo "${HOME}/.local/bin")"
+      export PATH="${UV_TOOL_BIN}:${PATH}"
+    else
+      warn "uv tool install failed — falling back to isolated venv…"
       INSTALLED_VIA="venv"
     fi
   else
-    # Fall through to venv strategy
+    warn "Could not install uv — falling back to isolated venv…"
     INSTALLED_VIA="venv"
   fi
-
-# ── Strategy 3: dedicated venv (Linux / no Homebrew) ─────────────────────────
-else
-  INSTALLED_VIA="venv"
 fi
 
-if [[ "${INSTALLED_VIA:-venv}" == "venv" ]]; then
+if [[ "${INSTALLED_VIA}" == "venv" ]]; then
   VENV_DIR="${HOME}/.local/share/newsroom/venv"
   BIN_DIR="${HOME}/.local/bin"
 
   info "Creating isolated venv at ${VENV_DIR}"
   mkdir -p "${BIN_DIR}"
 
-  # Some Python distributions (e.g. Homebrew Python 3.14+) ship without
-  # ensurepip, which causes `python3 -m venv` to fail.  Fall back to
-  # --without-pip and bootstrap pip via get-pip.py in that case.
-  if ! python3 -m venv "${VENV_DIR}" --clear 2>/dev/null; then
-    python3 -m venv "${VENV_DIR}" --clear --without-pip
-    info "Bootstrapping pip (ensurepip unavailable)…"
-    if command -v curl &>/dev/null; then
-      curl -fsSL https://bootstrap.pypa.io/get-pip.py | "${VENV_DIR}/bin/python3" - --quiet
-    else
-      warn "curl not found; downloading get-pip.py via python3 stdlib"
-      python3 - <<'PY' | "${VENV_DIR}/bin/python3" - --quiet
+  # Prefer uv venv when available — it does not require ensurepip.
+  if command -v uv &>/dev/null; then
+    if ! uv venv "${VENV_DIR}" --seed; then
+      err "uv venv creation failed — cannot complete installation."
+      exit 1
+    fi
+    "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
+    "${VENV_DIR}/bin/pip" install --quiet "rss-ollama-news-cli @ git+${GIT_URL}"
+  else
+    # Some Python distributions (e.g. Homebrew Python 3.14+) ship without
+    # ensurepip, which causes `python3 -m venv` to fail.  Fall back to
+    # --without-pip and bootstrap pip via get-pip.py in that case.
+    if ! python3 -m venv "${VENV_DIR}" --clear 2>/dev/null; then
+      python3 -m venv "${VENV_DIR}" --clear --without-pip
+      info "Bootstrapping pip (ensurepip unavailable)…"
+      if command -v curl &>/dev/null; then
+        curl -fsSL https://bootstrap.pypa.io/get-pip.py | "${VENV_DIR}/bin/python3" - --quiet
+      else
+        warn "curl not found; downloading get-pip.py via python3 stdlib"
+        python3 - <<'PY' | "${VENV_DIR}/bin/python3" - --quiet
 import sys
 import urllib.request
 
 with urllib.request.urlopen("https://bootstrap.pypa.io/get-pip.py") as response:
     sys.stdout.buffer.write(response.read())
 PY
+      fi
     fi
-  fi
 
-  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
-  "${VENV_DIR}/bin/pip" install --quiet "rss-ollama-news-cli @ git+${GIT_URL}"
+    "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
+    "${VENV_DIR}/bin/pip" install --quiet "rss-ollama-news-cli @ git+${GIT_URL}"
+  fi
 
   # Write a thin wrapper so 'news' works from any shell
   cat > "${BIN_DIR}/news" <<WRAPPER
