@@ -22,7 +22,9 @@ info() { echo -e "  ${BLUE}ℹ${NC}  $*"; }
 ask() {
   local prompt="$1" default="$2"
   if [ -c /dev/tty ] && [ -r /dev/tty ]; then
-    read -r -p "  ${prompt} " REPLY </dev/tty
+    if ! read -r -p "  ${prompt} " REPLY </dev/tty; then
+      REPLY=""
+    fi
   else
     REPLY=""
   fi
