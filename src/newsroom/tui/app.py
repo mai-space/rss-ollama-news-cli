@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import webbrowser
 from itertools import groupby
 from typing import ClassVar
@@ -25,6 +26,16 @@ _STATUS_STYLE: dict[str, tuple[str, str]] = {
     "done": ("●", "green"),
     "error": ("✗", "red"),
 }
+
+
+def _feed_safe_id(url: str) -> str:
+    """Return a stable, collision-free, CSS-safe widget ID derived from the feed URL.
+
+    Uses a SHA-256 hash of the URL prefixed with 'f' so the result always begins
+    with a letter (CSS identifiers may not start with a digit) and is guaranteed
+    unique as long as feed URLs are distinct.
+    """
+    return "f" + hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
 def _status_cell(status: str) -> Text:
@@ -195,6 +206,7 @@ class NewsroomApp(App[None]):
         self.config = config or load_config()
         self._articles = []
         self._filter = None
+        self._feed_name_map: dict[str, str] = {}  # sanitised id-suffix -> original name
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
@@ -242,7 +254,9 @@ class NewsroomApp(App[None]):
         for category, feeds in groupby(enabled, key=lambda f: f.category):
             lv.append(ListItem(Label(f"  {category.upper()}"), classes="category-item"))
             for feed in feeds:
-                lv.append(ListItem(Label(f"    {feed.name}"), id=f"feed-{feed.name}"))
+                safe_id = _feed_safe_id(feed.url)
+                self._feed_name_map[safe_id] = feed.name
+                lv.append(ListItem(Label(f"    {feed.name}"), id=f"feed-{safe_id}"))
 
     # ── Workers ──────────────────────────────────────────────────────────────
 
@@ -372,7 +386,11 @@ class NewsroomApp(App[None]):
         if item_id == "feed-all":
             self._filter = None
         elif item_id.startswith("feed-"):
-            self._filter = item_id[len("feed-") :]
+            id_suffix = item_id[len("feed-"):]
+            if id_suffix not in self._feed_name_map:
+                logger.warning("No feed name found for id suffix %r", id_suffix)
+                return
+            self._filter = self._feed_name_map[id_suffix]
         else:
             return  # category header — ignore
         self._rebuild_table()
