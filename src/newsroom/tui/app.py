@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import re
+import hashlib
 import webbrowser
 from itertools import groupby
 from typing import ClassVar
@@ -28,9 +28,14 @@ _STATUS_STYLE: dict[str, tuple[str, str]] = {
 }
 
 
-def _name_to_id(name: str) -> str:
-    """Convert a feed name to a valid CSS/Textual widget ID (no spaces or special chars)."""
-    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
+def _feed_safe_id(url: str) -> str:
+    """Return a stable, collision-free, CSS-safe widget ID derived from the feed URL.
+
+    Uses a SHA-256 hash of the URL prefixed with 'f' so the result always begins
+    with a letter (CSS identifiers may not start with a digit) and is guaranteed
+    unique as long as feed URLs are distinct.
+    """
+    return "f" + hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
 def _status_cell(status: str) -> Text:
@@ -249,7 +254,7 @@ class NewsroomApp(App[None]):
         for category, feeds in groupby(enabled, key=lambda f: f.category):
             lv.append(ListItem(Label(f"  {category.upper()}"), classes="category-item"))
             for feed in feeds:
-                safe_id = _name_to_id(feed.name)
+                safe_id = _feed_safe_id(feed.url)
                 self._feed_name_map[safe_id] = feed.name
                 lv.append(ListItem(Label(f"    {feed.name}"), id=f"feed-{safe_id}"))
 
