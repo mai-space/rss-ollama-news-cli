@@ -135,7 +135,18 @@ if [[ "${INSTALLED_VIA:-venv}" == "venv" ]]; then
   if ! python3 -m venv "${VENV_DIR}" --clear 2>/dev/null; then
     python3 -m venv "${VENV_DIR}" --clear --without-pip
     info "Bootstrapping pip (ensurepip unavailable)…"
-    curl -fsSL https://bootstrap.pypa.io/get-pip.py | "${VENV_DIR}/bin/python3" - --quiet
+    if command -v curl &>/dev/null; then
+      curl -fsSL https://bootstrap.pypa.io/get-pip.py | "${VENV_DIR}/bin/python3" - --quiet
+    else
+      warn "curl not found; downloading get-pip.py via python3 stdlib"
+      python3 - <<'PY' | "${VENV_DIR}/bin/python3" - --quiet
+import sys
+import urllib.request
+
+with urllib.request.urlopen("https://bootstrap.pypa.io/get-pip.py") as response:
+    sys.stdout.buffer.write(response.read())
+PY
+    fi
   fi
 
   "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
