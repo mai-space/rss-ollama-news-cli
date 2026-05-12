@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import webbrowser
 from itertools import groupby
 from typing import ClassVar
@@ -25,6 +26,11 @@ _STATUS_STYLE: dict[str, tuple[str, str]] = {
     "done": ("●", "green"),
     "error": ("✗", "red"),
 }
+
+
+def _name_to_id(name: str) -> str:
+    """Convert a feed name to a valid CSS/Textual widget ID (no spaces or special chars)."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", name)
 
 
 def _status_cell(status: str) -> Text:
@@ -195,6 +201,7 @@ class NewsroomApp(App[None]):
         self.config = config or load_config()
         self._articles = []
         self._filter = None
+        self._feed_name_map: dict[str, str] = {}  # sanitised id-suffix -> original name
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
@@ -242,7 +249,9 @@ class NewsroomApp(App[None]):
         for category, feeds in groupby(enabled, key=lambda f: f.category):
             lv.append(ListItem(Label(f"  {category.upper()}"), classes="category-item"))
             for feed in feeds:
-                lv.append(ListItem(Label(f"    {feed.name}"), id=f"feed-{feed.name}"))
+                safe_id = _name_to_id(feed.name)
+                self._feed_name_map[safe_id] = feed.name
+                lv.append(ListItem(Label(f"    {feed.name}"), id=f"feed-{safe_id}"))
 
     # ── Workers ──────────────────────────────────────────────────────────────
 
@@ -372,7 +381,11 @@ class NewsroomApp(App[None]):
         if item_id == "feed-all":
             self._filter = None
         elif item_id.startswith("feed-"):
-            self._filter = item_id[len("feed-") :]
+            id_suffix = item_id[len("feed-"):]
+            if id_suffix not in self._feed_name_map:
+                logger.warning("No feed name found for id suffix %r", id_suffix)
+                return
+            self._filter = self._feed_name_map[id_suffix]
         else:
             return  # category header — ignore
         self._rebuild_table()
