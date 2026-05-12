@@ -128,11 +128,15 @@ if [[ "${INSTALLED_VIA}" == "uv" ]]; then
   if ! command -v uv &>/dev/null; then
     info "uv not found — installing…"
     if command -v brew &>/dev/null; then
-      brew install uv --quiet
+      if ! brew install uv --quiet; then
+        warn "Homebrew failed to install uv."
+      fi
     else
       # Official uv installer (no root required; works on macOS and Linux).
       # This follows the same curl-to-shell pattern as this installer itself.
-      curl -LsSf https://astral.sh/uv/install.sh | sh
+      if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+        warn "uv installer failed."
+      fi
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
   fi
