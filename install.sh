@@ -90,9 +90,9 @@ if command -v pipx &>/dev/null; then
     ok "Newsroom installed via pipx"
     INSTALLED_VIA="pipx"
   else
-    err "pipx install failed."
-    info "Try manually: pipx install git+${GIT_URL}"
-    exit 1
+    warn "pipx install failed (ensurepip unavailable? e.g. Homebrew Python 3.14+)."
+    info "Falling back to isolated venv install…"
+    INSTALLED_VIA="venv"
   fi
 
 # ── Strategy 2: offer to install pipx, then retry ────────────────────────────
@@ -105,9 +105,13 @@ elif command -v brew &>/dev/null; then
     brew install pipx --quiet
     pipx ensurepath --quiet
     export PATH="${HOME}/.local/bin:${PATH}"
-    pipx install "git+${GIT_URL}" --force
-    ok "Newsroom installed via pipx"
-    INSTALLED_VIA="pipx"
+    if pipx install "git+${GIT_URL}" --force 2>&1; then
+      ok "Newsroom installed via pipx"
+      INSTALLED_VIA="pipx"
+    else
+      warn "pipx install failed — falling back to isolated venv install…"
+      INSTALLED_VIA="venv"
+    fi
   else
     # Fall through to venv strategy
     INSTALLED_VIA="venv"
@@ -124,7 +128,27 @@ if [[ "${INSTALLED_VIA:-venv}" == "venv" ]]; then
 
   info "Creating isolated venv at ${VENV_DIR}"
   mkdir -p "${BIN_DIR}"
-  python3 -m venv "${VENV_DIR}" --clear --upgrade-deps 2>&1 | grep -v "^$" || true
+
+  # Some Python distributions (e.g. Homebrew Python 3.14+) ship without
+  # ensurepip, which causes `python3 -m venv` to fail.  Fall back to
+  # --without-pip and bootstrap pip via get-pip.py in that case.
+  if ! python3 -m venv "${VENV_DIR}" --clear 2>/dev/null; then
+    python3 -m venv "${VENV_DIR}" --clear --without-pip
+    info "Bootstrapping pip (ensurepip unavailable)…"
+    if command -v curl &>/dev/null; then
+      curl -fsSL https://bootstrap.pypa.io/get-pip.py | "${VENV_DIR}/bin/python3" - --quiet
+    else
+      warn "curl not found; downloading get-pip.py via python3 stdlib"
+      python3 - <<'PY' | "${VENV_DIR}/bin/python3" - --quiet
+import sys
+import urllib.request
+
+with urllib.request.urlopen("https://bootstrap.pypa.io/get-pip.py") as response:
+    sys.stdout.buffer.write(response.read())
+PY
+    fi
+  fi
+
   "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
   "${VENV_DIR}/bin/pip" install --quiet "rss-ollama-news-cli @ git+${GIT_URL}"
 
