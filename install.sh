@@ -14,6 +14,24 @@ warn() { echo -e "  ${YELLOW}⚠${NC}  $*"; }
 err()  { echo -e "  ${RED}✗${NC}  $*"; }
 info() { echo -e "  ${BLUE}ℹ${NC}  $*"; }
 
+# When the script is piped to bash (curl … | bash), bash and the built-in
+# 'read' share the same stdin (the pipe).  If 'read' pulls from that pipe it
+# consumes lines of the script itself, causing bash to skip or misparse them.
+# Fix: always read interactive input from /dev/tty; fall back to the default
+# answer when no controlling terminal is available (CI, Docker, etc.).
+ask() {
+  local prompt="$1" default="$2"
+  if [ -c /dev/tty ] && [ -r /dev/tty ]; then
+    if ! read -r -p "  ${prompt} " REPLY </dev/tty; then
+      REPLY=""
+    fi
+  else
+    REPLY=""
+  fi
+  # If nothing was entered, use the supplied default character
+  [[ -z "$REPLY" ]] && REPLY="$default"
+}
+
 echo ""
 echo -e "${BLUE}${BOLD}  📰 Newsroom Installer${NC}"
 echo -e "${DIM}  RSS feeds + AI summaries in your terminal${NC}"
@@ -49,7 +67,7 @@ else
   echo -e "    ${DIM}curl -fsSL https://ollama.ai/install.sh | sh${NC}"
   echo -e "    ${DIM}ollama pull llama3.2${NC}"
   echo ""
-  read -r -p "  Continue without Ollama? [y/N] " REPLY
+  ask "Continue without Ollama? [y/N]" "N"
   echo
   [[ "$REPLY" =~ ^[Yy]$ ]] || exit 1
 fi
@@ -81,7 +99,7 @@ if command -v pipx &>/dev/null; then
 elif command -v brew &>/dev/null; then
   warn "pipx not found. It is the recommended installer for CLI tools on macOS."
   echo ""
-  read -r -p "  Install pipx via Homebrew now? [Y/n] " REPLY
+  ask "Install pipx via Homebrew now? [Y/n]" "Y"
   echo
   if [[ ! "$REPLY" =~ ^[Nn]$ ]]; then
     brew install pipx --quiet
